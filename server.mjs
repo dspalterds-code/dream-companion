@@ -1,5 +1,6 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
+
 const PORT = process.env.PORT || 3000;
 
 const system = `You are Dream Companion, a gentle dream-reflection assistant. Help users explore possible personal meanings in dreams without claiming interpretations are scientifically established. Never diagnose, assert hidden trauma, predict events, or suggest a symbol has one universal meaning. Ask thoughtful questions and present interpretations as possibilities rather than facts.`;
@@ -7,15 +8,26 @@ const system = `You are Dream Companion, a gentle dream-reflection assistant. He
 http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Content-Type', 'application/json');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
     return res.end();
   }
 
+  if (req.url === '/' && req.method === 'GET') {
+    try {
+      const html = await readFile(new URL('./index.html', import.meta.url));
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(html);
+    } catch (e) {
+      console.error('Could not load index.html:', e.message);
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      return res.end('Could not load Dream Companion.');
+    }
+  }
+
   if (req.url !== '/api/chat' || req.method !== 'POST') {
-    res.writeHead(404);
+    res.writeHead(404, { 'Content-Type': 'application/json' });
     return res.end('{}');
   }
 
@@ -28,6 +40,7 @@ http.createServer(async (req, res) => {
 
     for await (const chunk of req) {
       body += chunk;
+
       if (body.length > 50000) {
         throw Error('Request too large');
       }
@@ -70,14 +83,16 @@ http.createServer(async (req, res) => {
       throw Error(data.error?.message || 'AI request failed');
     }
 
-    res.end(JSON.stringify({
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+
+    return res.end(JSON.stringify({
       reply: data.choices?.[0]?.message?.content || ''
     }));
 
   } catch (e) {
     console.error('Dream Companion error:', e.message);
-    res.writeHead(500);
-    res.end(JSON.stringify({ error: e.message }));
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ error: e.message }));
   }
 
 }).listen(PORT, () => {
